@@ -6,14 +6,13 @@
 // reasoning as the logs), and can be resumed from Settings on next launch.
 
 import { App, PluginManifest, TFile, TFolder } from "obsidian";
-import { NoteMetadata, Tier } from "../types";
+import { NoteMetadata } from "../types";
 
 export type BatchFileStatus = "pending" | "success" | "error";
 
 export interface BatchFileEntry {
 	path: string;
 	status: BatchFileStatus;
-	tier?: Tier;
 	old?: NoteMetadata;
 	proposed?: NoteMetadata;
 	error?: string;

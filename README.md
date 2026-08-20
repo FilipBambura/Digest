@@ -6,9 +6,9 @@ It reads the note's content, sends it to Gemini together with a configurable sys
 
 ## Features
 
-- **Single-note generation** — right-click a note → *Generate metadata*. Shows a diff (old vs. proposed values) before writing anything.
-- **Folder batch generation** — right-click a folder → *Generate metadata*, choose *only this folder* or *recursively*. Runs note by note and lets you review every result before applying.
-- **Resumable batches** — batch progress is checkpointed to disk after every note, so a batch survives an app restart or a backgrounded mobile session. An unfinished batch can be resumed or discarded from Settings.
+- **Single-note generation** — right-click a note → *Generate metadata*. Shows a diff (old vs. proposed values) before writing anything. Available on desktop and mobile.
+- **Folder batch generation** — right-click a folder → *Generate metadata*, choose *only this folder* or *recursively*. Runs several notes at once (configurable) and lets you review every result before applying. **Desktop only** — see [Mobile](#mobile) below.
+- **Resumable batches** — batch progress is checkpointed to disk after every note, so a batch survives an app restart. An unfinished batch can be resumed or discarded from Settings.
 - **Free/paid tier fallback** — configure a free-tier and/or paid-tier API key. Modes: automatic (try free, fall back to paid on rate limit/quota errors), free only, paid only.
 - **Configurable model** — pick a preset (Lite / Flash / Pro) or type an exact model id.
 - **Optional API key encryption** — keys can be stored as AES-GCM ciphertext, derived from a password via PBKDF2 (250,000 iterations). The password itself is never persisted — only kept in memory for the running session, so it must be re-entered after every Obsidian restart.
@@ -42,6 +42,7 @@ Open **Settings → Digest** and configure at least one API key:
 - **Tier mode** — automatic (recommended), free tier only, or paid tier only.
 - **Model** — a preset, or a manually entered model id.
 - **Request timeout** — how long to wait for a single API response before giving up.
+- **Parallel requests** — how many notes get their metadata generated at the same time during a folder batch (default 3).
 
 ### Encrypting your API keys
 
@@ -51,14 +52,18 @@ Turn on **Encrypt API keys with a password** to store the keys as AES-GCM cipher
 
 - **One note**: right-click it in the file explorer (or its tab) → **Generate metadata** → review the diff → **Accept changes**.
 - **A folder**: right-click it → **Generate metadata** → choose the scope → confirm → review the batch results → **Apply selected**.
-- While a batch runs, progress shows in the status bar (`Digest: x/y`); click it to cancel the remaining notes (notes already generated are still offered for review).
+- While a batch runs, up to **Parallel requests** notes are generated at once; progress shows in the status bar (`Digest: x/y`), and clicking it cancels the remaining notes (in-flight ones finish, notes already generated are still offered for review).
 - If Obsidian closes or crashes mid-batch, reopening it shows a notice, and **Settings → Digest** offers **Resume** or **Discard** for the unfinished batch.
+
+### Mobile
+
+Folder batch generation is desktop-only: a batch can span many notes and is checkpointed so it survives an app restart, but iOS/Android can suspend or kill Obsidian's JS runtime while it's in the background, which would break a batch mid-run. Single-note generation has no such problem and works the same on mobile as on desktop.
 
 ## Logs
 
 Every run (success or error) is recorded to a local, per-device JSONL file under `.obsidian/plugins/digest/logs/`. Entries older than 30 days are pruned automatically. From Settings you can:
 
-- **Export logs** for a date range to a Markdown note (as a table).
+- **Export logs** for a date range to a Markdown note (as a table). The date range defaults to yesterday–tomorrow (i.e. the last day) but can be changed; the note is created wherever your vault's *Default location for new notes* setting says new notes should go.
 - **Delete logs** permanently, across all devices.
 
 Logs stay local to each device (the device id lives in `localStorage`, not in a vault file), so they are never synced and never conflict between devices.
@@ -84,7 +89,8 @@ src/
   settings.ts          Settings shape, defaults, model presets
   crypto.ts            AES-GCM/PBKDF2 API key encryption
   frontmatter.ts        Frontmatter stripping/normalization helpers
-  gemini-api.ts        Gemini request/response handling, tier fallback
+  gemini-api.ts        Pure single-key Gemini HTTP request/response handling
+  gemini-client.ts     Free/paid tier selection, fallback, counters, logging - the only thing callers use
   logging.ts           Per-device JSONL run log (read/write/prune/export)
   plugin.ts            DigestPlugin - onload/onunload and orchestration
   settings-tab.ts      Settings UI (PluginSettingTab)
@@ -99,6 +105,8 @@ src/
     folder-scope-modal.ts
     batch-review-modal.ts
 ```
+
+`gemini-api.ts` knows nothing about settings, tiers, or keys — it just makes one HTTP call with one key. `gemini-client.ts`'s `GeminiClient` is the only place that knows there are two tiers: it resolves both keys, applies the tier-fallback logic, updates the request counters, and writes the log entry, exposing a single `generateMetadata(notePath, noteContent)` call to the rest of the plugin.
 
 ## Privacy
 

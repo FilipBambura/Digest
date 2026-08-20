@@ -1,6 +1,5 @@
 import { requestUrl } from "obsidian";
-import { DigestSettings } from "./settings";
-import { MetadataResult, NoteMetadata } from "./types";
+import { NoteMetadata } from "./types";
 
 const API_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/interactions";
 const API_REVISION = "2026-05-20";
@@ -49,7 +48,7 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
 	});
 }
 
-async function callModelOnce(
+export async function callModelOnce(
 	apiKey: string,
 	model: string,
 	systemPrompt: string,
@@ -126,40 +125,4 @@ async function callModelOnce(
 		console.error("Digest: invalid JSON in response", rawText);
 		throw new Error("Response wasn't valid JSON (see console for details).");
 	}
-}
-
-export async function requestMetadata(
-	settings: DigestSettings,
-	freeKey: string,
-	paidKey: string,
-	noteContent: string
-): Promise<MetadataResult> {
-	const timeoutMs = Math.max(1, settings.requestTimeoutSeconds || 30) * 1000;
-
-	if (settings.tierMode === "paidOnly") {
-		if (!paidKey) throw new Error("Missing paid tier API key.");
-		const data = await callModelOnce(paidKey, settings.model, settings.systemPrompt, noteContent, timeoutMs);
-		return { data, tier: "paid" };
-	}
-
-	if (settings.tierMode === "freeOnly") {
-		if (!freeKey) throw new Error("Missing free tier API key.");
-		const data = await callModelOnce(freeKey, settings.model, settings.systemPrompt, noteContent, timeoutMs);
-		return { data, tier: "free" };
-	}
-
-	if (freeKey) {
-		try {
-			const data = await callModelOnce(freeKey, settings.model, settings.systemPrompt, noteContent, timeoutMs);
-			return { data, tier: "free" };
-		} catch (e) {
-			if (!(e instanceof RateLimitError)) throw e;
-		}
-	}
-
-	if (!paidKey) {
-		throw new Error("Free tier limit reached (or the free key is missing) and no paid tier key is configured.");
-	}
-	const data = await callModelOnce(paidKey, settings.model, settings.systemPrompt, noteContent, timeoutMs);
-	return { data, tier: "paid" };
 }

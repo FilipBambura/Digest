@@ -1,11 +1,12 @@
-import { Notice, Plugin, TFile, TFolder } from "obsidian";
+import { Notice, Platform, Plugin, TFile, TFolder } from "obsidian";
 import { DEFAULT_SETTINGS, DigestSettings } from "./settings";
 import { ENCRYPTION_CHECK_VALUE, decryptString } from "./crypto";
-import { MetadataResult, NoteMetadata, Tier } from "./types";
-import { requestMetadata } from "./gemini-api";
+import { NoteMetadata } from "./types";
+import { GeminiClient } from "./gemini-client";
 import { ensureFrontmatterAtFileStart, stripFrontmatter } from "./frontmatter";
-import { LOG_RETENTION_DAYS, LogEntry, appendLogEntry, getDeviceId, pruneOwnLogs } from "./logging";
+import { LOG_RETENTION_DAYS, getDeviceId, logEvent, pruneOwnLogs } from "./logging";
 import {
+	BatchFileEntry,
 	BatchFileStatus,
 	BatchJob,
 	collectMarkdownFiles,
@@ -24,6 +25,7 @@ export default class DigestPlugin extends Plugin {
 	settings!: DigestSettings;
 	deviceId!: string;
 	statusBarItem!: HTMLElement;
+	geminiClient!: GeminiClient;
 
 	// Session-only state for encryption - NEVER persisted via saveData().
 	// After an Obsidian restart these are always null/"" and the password
@@ -45,6 +47,7 @@ export default class DigestPlugin extends Plugin {
 	async onload() {
 		await this.loadSettings();
 		this.deviceId = getDeviceId(this.app);
+		this.geminiClient = new GeminiClient(this);
 
 		pruneOwnLogs(this.app, this.manifest, this.deviceId, LOG_RETENTION_DAYS).catch((e) =>
 			console.error("Digest: failed to prune old logs", e)
@@ -63,7 +66,11 @@ export default class DigestPlugin extends Plugin {
 					menu.addItem((item) => {
 						item.setTitle("Generate metadata").setIcon("tags").onClick(() => this.processFile(file));
 					});
-				} else if (file instanceof TFolder) {
+				} else if (file instanceof TFolder && Platform.isDesktopApp) {
+					// Folder batches are checkpointed to survive an app restart, but
+					// iOS/Android can suspend or kill the JS runtime while backgrounded,
+					// which breaks a batch mid-run. Desktop doesn't have that problem,
+					// so batch generation is only offered there.
 					menu.addItem((item) => {
 						item.setTitle("Generate metadata").setIcon("tags").onClick(() => this.processFolder(file));
 					});
@@ -153,9 +160,7 @@ export default class DigestPlugin extends Plugin {
 				}
 			}
 
-			const freeKey = this.getFreeKey();
-			const paidKey = this.getPaidKey();
-			if (!freeKey && !paidKey) {
+			if (!this.geminiClient.isConfigured()) {
 				new Notice("No API key is configured (Settings → Digest).");
 				return;
 			}
@@ -171,25 +176,15 @@ export default class DigestPlugin extends Plugin {
 			}
 
 			const notice = new Notice("Generating metadata...", 0);
-			let result: MetadataResult;
+			let proposed: NoteMetadata;
 			try {
-				result = await requestMetadata(this.settings, freeKey, paidKey, noteContent);
+				proposed = await this.geminiClient.generateMetadata(file.path, noteContent);
 			} catch (e: any) {
 				notice.hide();
-				console.error("Digest:", e);
-				await this.logEvent(file.path, null, "error", e.message);
 				new Notice(`Error: ${e.message}`);
 				return;
 			}
 			notice.hide();
-
-			if (result.tier === "free") {
-				this.settings.freeRequestCount++;
-			} else {
-				this.settings.paidRequestCount++;
-			}
-			await this.saveSettings();
-			await this.logEvent(file.path, result.tier, "success");
 
 			const cache = this.app.metadataCache.getFileCache(file)?.frontmatter;
 			const oldData: NoteMetadata = {
@@ -200,13 +195,13 @@ export default class DigestPlugin extends Plugin {
 
 			new DiffModal(this.app, {
 				old: oldData,
-				proposed: result.data,
+				proposed,
 				onAccept: async () => {
 					await ensureFrontmatterAtFileStart(this.app, file);
 					await this.app.fileManager.processFrontMatter(file, (fm) => {
-						fm.Summary = result.data.Summary;
-						fm.Keywords = result.data.Keywords;
-						fm.Aliases = result.data.Aliases;
+						fm.Summary = proposed.Summary;
+						fm.Keywords = proposed.Keywords;
+						fm.Aliases = proposed.Aliases;
 					});
 					new Notice("Metadata updated.");
 				},
@@ -216,21 +211,6 @@ export default class DigestPlugin extends Plugin {
 			new Notice("Something went wrong - see the developer console for details.");
 		} finally {
 			this.processingFiles.delete(file.path);
-		}
-	}
-
-	private async logEvent(notePath: string, tier: Tier | null, status: "success" | "error", error?: string) {
-		try {
-			const entry: LogEntry = {
-				ts: new Date().toISOString(),
-				note: notePath,
-				tier: tier ?? null,
-				status,
-			};
-			if (error) entry.error = error;
-			await appendLogEntry(this.app, this.manifest, this.deviceId, entry);
-		} catch (e) {
-			console.error("Digest: failed to write log entry", e);
 		}
 	}
 
@@ -307,6 +287,50 @@ export default class DigestPlugin extends Plugin {
 		new Notice("Batch job discarded.");
 	}
 
+	private async processBatchEntry(job: BatchJob, entry: BatchFileEntry) {
+		const file = this.app.vault.getAbstractFileByPath(entry.path);
+		if (!(file instanceof TFile)) {
+			entry.status = "error";
+			entry.error = "Note no longer exists.";
+			await logEvent(this.app, this.manifest, this.deviceId, entry.path, null, "error", entry.error);
+			await saveBatchJob(this.app, this.manifest, this.deviceId, job);
+			this.updateStatusBar(job);
+			return;
+		}
+
+		let noteContent: string;
+		try {
+			await ensureFrontmatterAtFileStart(this.app, file);
+			noteContent = stripFrontmatter(await this.app.vault.cachedRead(file));
+		} catch (e) {
+			entry.status = "error";
+			entry.error = "Couldn't read the note.";
+			await logEvent(this.app, this.manifest, this.deviceId, entry.path, null, "error", entry.error);
+			await saveBatchJob(this.app, this.manifest, this.deviceId, job);
+			this.updateStatusBar(job);
+			return;
+		}
+
+		const rawCache = this.app.metadataCache.getFileCache(file);
+		const cache = rawCache ? rawCache.frontmatter : null;
+		entry.old = {
+			Summary: (cache && cache.Summary) || "",
+			Keywords: (cache && cache.Keywords) || [],
+			Aliases: (cache && cache.Aliases) || [],
+		};
+
+		try {
+			entry.proposed = await this.geminiClient.generateMetadata(entry.path, noteContent);
+			entry.status = "success";
+		} catch (e: any) {
+			entry.status = "error";
+			entry.error = e.message;
+		}
+
+		await saveBatchJob(this.app, this.manifest, this.deviceId, job);
+		this.updateStatusBar(job);
+	}
+
 	private async executeBatchJob(job: BatchJob) {
 		if (this.batchRunning) {
 			new Notice("A batch is already running.");
@@ -323,9 +347,7 @@ export default class DigestPlugin extends Plugin {
 			}
 		}
 
-		const freeKey = this.getFreeKey();
-		const paidKey = this.getPaidKey();
-		if (!freeKey && !paidKey) {
+		if (!this.geminiClient.isConfigured()) {
 			new Notice("No API key is configured (Settings → Digest).");
 			return;
 		}
@@ -334,62 +356,24 @@ export default class DigestPlugin extends Plugin {
 		this.batchCancelled = false;
 		this.updateStatusBar(job);
 
-		for (const entry of job.files) {
-			if (entry.status !== "pending") continue;
-			if (this.batchCancelled) break;
-
-			const file = this.app.vault.getAbstractFileByPath(entry.path);
-			if (!(file instanceof TFile)) {
-				entry.status = "error";
-				entry.error = "Note no longer exists.";
-				await this.logEvent(entry.path, null, "error", entry.error);
-				await saveBatchJob(this.app, this.manifest, this.deviceId, job);
-				this.updateStatusBar(job);
-				continue;
+		// Bounded-concurrency worker pool: each worker keeps pulling the next
+		// pending file off the shared cursor until none are left or the batch
+		// is cancelled. JS is single-threaded, so incrementing `cursor` and
+		// mutating each entry's status is race-free between `await` points -
+		// only the network/disk I/O actually overlaps.
+		const pendingCount = job.files.filter((f) => f.status === "pending").length;
+		const concurrency = Math.max(1, Math.min(this.settings.parallelRequests || 3, pendingCount));
+		let cursor = 0;
+		const runWorker = async () => {
+			while (!this.batchCancelled) {
+				const index = cursor++;
+				if (index >= job.files.length) return;
+				const entry = job.files[index];
+				if (entry.status !== "pending") continue;
+				await this.processBatchEntry(job, entry);
 			}
-
-			let noteContent: string;
-			try {
-				await ensureFrontmatterAtFileStart(this.app, file);
-				noteContent = stripFrontmatter(await this.app.vault.cachedRead(file));
-			} catch (e) {
-				entry.status = "error";
-				entry.error = "Couldn't read the note.";
-				await this.logEvent(entry.path, null, "error", entry.error);
-				await saveBatchJob(this.app, this.manifest, this.deviceId, job);
-				this.updateStatusBar(job);
-				continue;
-			}
-
-			const rawCache = this.app.metadataCache.getFileCache(file);
-			const cache = rawCache ? rawCache.frontmatter : null;
-			entry.old = {
-				Summary: (cache && cache.Summary) || "",
-				Keywords: (cache && cache.Keywords) || [],
-				Aliases: (cache && cache.Aliases) || [],
-			};
-
-			try {
-				const result = await requestMetadata(this.settings, freeKey, paidKey, noteContent);
-				entry.status = "success";
-				entry.tier = result.tier;
-				entry.proposed = result.data;
-				if (result.tier === "free") {
-					this.settings.freeRequestCount++;
-				} else {
-					this.settings.paidRequestCount++;
-				}
-				await this.saveSettings();
-				await this.logEvent(entry.path, result.tier, "success");
-			} catch (e: any) {
-				entry.status = "error";
-				entry.error = e.message;
-				await this.logEvent(entry.path, null, "error", e.message);
-			}
-
-			await saveBatchJob(this.app, this.manifest, this.deviceId, job);
-			this.updateStatusBar(job);
-		}
+		};
+		await Promise.all(Array.from({ length: concurrency }, () => runWorker()));
 
 		this.batchRunning = false;
 		this.batchCancelled = false;

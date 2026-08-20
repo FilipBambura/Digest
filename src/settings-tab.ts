@@ -8,6 +8,15 @@ import { promptForPassword } from "./modals/password-prompt-modal";
 import { confirmDialog } from "./modals/confirm-modal";
 import { SystemPromptModal } from "./modals/system-prompt-modal";
 
+// Local (not UTC) YYYY-MM-DD, so the date picker's default matches the
+// user's own calendar day instead of shifting near midnight in some timezones.
+function formatDateInput(date: Date): string {
+	const year = date.getFullYear();
+	const month = String(date.getMonth() + 1).padStart(2, "0");
+	const day = String(date.getDate()).padStart(2, "0");
+	return `${year}-${month}-${day}`;
+}
+
 export class DigestSettingTab extends PluginSettingTab {
 	plugin: DigestPlugin;
 
@@ -98,6 +107,24 @@ export class DigestSettingTab extends PluginSettingTab {
 				});
 			});
 
+		new Setting(containerEl)
+			.setName("Parallel requests")
+			.setDesc("Number of notes for which metadata is generated in parallel during a folder batch.")
+			.addText((text) => {
+				text.setValue(String(s.parallelRequests));
+				text.inputEl.type = "number";
+				text.inputEl.min = "1";
+				text.onChange((value) => {
+					const n = parseInt(value, 10);
+					if (!Number.isNaN(n) && n > 0) {
+						s.parallelRequests = n;
+					}
+				});
+				text.inputEl.addEventListener("blur", async () => {
+					await this.plugin.saveSettings();
+				});
+			});
+
 		containerEl.createEl("h3", { text: "API keys" });
 
 		new Setting(containerEl)
@@ -158,18 +185,26 @@ export class DigestSettingTab extends PluginSettingTab {
 			cls: "setting-item-description",
 		});
 
-		let exportFrom = "";
-		let exportTo = "";
+		const today = new Date();
+		const yesterday = new Date(today);
+		yesterday.setDate(yesterday.getDate() - 1);
+		const tomorrow = new Date(today);
+		tomorrow.setDate(tomorrow.getDate() + 1);
+
+		let exportFrom = formatDateInput(yesterday);
+		let exportTo = formatDateInput(tomorrow);
 		const exportSetting = new Setting(containerEl)
 			.setName("Export logs")
-			.setDesc("Pick a date range, then export matching entries to a note.");
+			.setDesc("Pick a date range, then export matching entries to a note. Defaults to the last day.");
 		const fromInput = exportSetting.controlEl.createEl("input", { type: "date" });
 		fromInput.style.marginRight = "6px";
+		fromInput.value = exportFrom;
 		fromInput.addEventListener("change", (e) => {
 			exportFrom = (e.target as HTMLInputElement).value;
 		});
 		const toInput = exportSetting.controlEl.createEl("input", { type: "date" });
 		toInput.style.marginRight = "6px";
+		toInput.value = exportTo;
 		toInput.addEventListener("change", (e) => {
 			exportTo = (e.target as HTMLInputElement).value;
 		});
@@ -188,7 +223,12 @@ export class DigestSettingTab extends PluginSettingTab {
 					});
 					const content = buildLogExportMarkdown(filtered, exportFrom, exportTo);
 					const stamp = `${exportFrom || "start"}_${exportTo || "end"}`.replace(/[^0-9a-zA-Z_-]/g, "");
-					const path = normalizePath(`Digest-log-export_${stamp}_${Date.now()}.md`);
+					const filename = `Digest-log-export_${stamp}_${Date.now()}.md`;
+					const folder = this.app.fileManager.getNewFileParent(
+						this.app.workspace.getActiveFile()?.path ?? "",
+						filename
+					);
+					const path = normalizePath(folder.path ? `${folder.path}/${filename}` : filename);
 					const file = await this.app.vault.create(path, content);
 					await this.app.workspace.getLeaf(true).openFile(file);
 					new Notice(`Exported ${filtered.length} log entries.`);

@@ -10,6 +10,7 @@ export interface DigestSettings {
 	modelInputMode: ModelInputMode;
 	tierMode: TierMode;
 	requestTimeoutSeconds: number;
+	parallelRequests: number;
 	encryptKeys: boolean;
 	freeApiKey: string;
 	paidApiKey: string;
@@ -26,6 +27,7 @@ export const DEFAULT_SETTINGS: DigestSettings = {
 	modelInputMode: "preset",
 	tierMode: "auto",
 	requestTimeoutSeconds: 30,
+	parallelRequests: 3,
 	encryptKeys: false,
 	freeApiKey: "",
 	paidApiKey: "",

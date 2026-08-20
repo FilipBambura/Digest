@@ -58,6 +58,29 @@ export async function appendLogEntry(
 	await app.vault.adapter.append(path, JSON.stringify(entry) + "\n");
 }
 
+export async function logEvent(
+	app: App,
+	manifest: PluginManifest,
+	deviceId: string,
+	notePath: string,
+	tier: Tier | null,
+	status: "success" | "error",
+	error?: string
+): Promise<void> {
+	try {
+		const entry: LogEntry = {
+			ts: new Date().toISOString(),
+			note: notePath,
+			tier: tier ?? null,
+			status,
+		};
+		if (error) entry.error = error;
+		await appendLogEntry(app, manifest, deviceId, entry);
+	} catch (e) {
+		console.error("Digest: failed to write log entry", e);
+	}
+}
+
 function parseLogLines(raw: string): LogEntry[] {
 	const out: LogEntry[] = [];
 	for (const line of raw.split("\n")) {
