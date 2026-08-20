@@ -28,7 +28,15 @@ It reads the note's content, sends it to Gemini together with a configurable sys
 
 ## Installation
 
-This plugin is not (yet) in the Community Plugins directory. To install manually:
+This plugin is not (yet) in the Community Plugins directory. It's currently distributed as a beta via [BRAT](https://github.com/TfTHacker/obsidian42-brat) (Beta Reviewer's Auto-update Tool):
+
+1. Install **BRAT** from Obsidian's Community Plugins and enable it.
+2. In BRAT's settings, choose **Add Beta plugin**, and paste this repo's URL: `https://github.com/FilipBambura/Digest`.
+3. BRAT pulls `manifest.json`/`main.js`/`styles.css` from the latest GitHub Release (including pre-releases) and installs them. Enable **Digest** under Settings → Community plugins afterwards.
+
+Each tagged release (e.g. `0.1.0`) is built and published automatically by a GitHub Actions workflow (`.github/workflows/release.yml`) when the tag is pushed — there's no manual upload step.
+
+To install manually instead:
 
 1. Build it (see [Development](#development) below), or download a release build.
 2. Copy `manifest.json`, `main.js` and `styles.css` into `<your vault>/.obsidian/plugins/digest/`.
