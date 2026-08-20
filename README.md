@@ -73,6 +73,33 @@ npm run build   # type-check + production build
 
 `main.js` is a build artifact (gitignored) produced from `main.ts` by [esbuild](https://esbuild.github.io/); it is not committed to this repository. After building, copy `manifest.json`, `main.js` and `styles.css` into a test vault's `.obsidian/plugins/digest/` folder, or symlink the whole project folder there for live reloading during development.
 
+### Project structure
+
+`main.ts` is a thin entry point that just re-exports the plugin class from `src/plugin.ts`. The rest of the source is split by responsibility:
+
+```
+src/
+  system-prompt.ts     Default system prompt sent to Gemini
+  types.ts             Shared domain types (NoteMetadata, Tier, MetadataResult)
+  settings.ts          Settings shape, defaults, model presets
+  crypto.ts            AES-GCM/PBKDF2 API key encryption
+  frontmatter.ts        Frontmatter stripping/normalization helpers
+  gemini-api.ts        Gemini request/response handling, tier fallback
+  logging.ts           Per-device JSONL run log (read/write/prune/export)
+  plugin.ts            DigestPlugin - onload/onunload and orchestration
+  settings-tab.ts      Settings UI (PluginSettingTab)
+  batch/
+    job-store.ts        Batch job persistence + folder file collection
+  modals/
+    password-prompt-modal.ts
+    confirm-modal.ts
+    system-prompt-modal.ts
+    metadata-diff-view.ts   Shared diff rendering used by the two modals below
+    diff-modal.ts
+    folder-scope-modal.ts
+    batch-review-modal.ts
+```
+
 ## Privacy
 
 - Note content is sent to the Gemini API (Google) to generate metadata — nothing else is transmitted.
