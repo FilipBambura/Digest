@@ -1,34 +1,23 @@
-/* Output field editor modal (Settings -> Output fields -> pencil icon). */
-.modal.digest-property-modal {
-	width: 640px;
-	max-width: 92vw;
+/* Output field editor (Settings -> Output fields -> pencil icon; opens as a
+   workspace tab, replacing the plugin's own modal chrome entirely). */
+.digest-property-view {
+	padding: var(--size-4-4);
+	max-width: 640px;
 }
 
-.digest-property-modal textarea {
-	width: 100%;
-	min-height: 110px;
-	resize: vertical;
-}
-
-.digest-modal-header-buttons {
+/* Instructions editor (Output field editor -> pencil icon next to
+   Instructions; also opens as its own workspace tab). */
+.digest-instructions-view {
 	display: flex;
-	justify-content: space-between;
-	align-items: center;
-	gap: 8px;
-	margin-bottom: 1rem;
-	padding-right: 2rem;
+	flex-direction: column;
+	height: 100%;
+	padding: var(--size-4-4);
 }
 
-/* Instructions editor modal (Output field editor -> pencil icon next to Instructions). */
-.modal.digest-instructions-modal {
-	width: 640px;
-	max-width: 92vw;
-}
-
-.digest-instructions-modal textarea {
+.digest-instructions-textarea {
+	flex: 1;
 	width: 100%;
-	min-height: 300px;
-	resize: vertical;
+	resize: none;
 }
 
 /* Shared old/new + chip-diff rendering, reused by both the single-note

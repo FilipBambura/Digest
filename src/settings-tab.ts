@@ -7,7 +7,7 @@ import { LOG_RETENTION_DAYS, buildLogExportMarkdown, logsDir, readAllLogEntries 
 import { loadBatchJob } from "./batch/job-store";
 import { promptForPassword } from "./modals/password-prompt-modal";
 import { confirmDialog } from "./modals/confirm-modal";
-import { PropertyEditModal } from "./modals/property-edit-modal";
+import { openPropertyEditView } from "./views/property-edit-view";
 
 // Local (not UTC) YYYY-MM-DD, so the date picker's default matches the
 // user's own calendar day instead of shifting near midnight in some timezones.
@@ -320,12 +320,7 @@ export class DigestSettingTab extends PluginSettingTab {
 					.setIcon("pencil")
 					.setTooltip("Edit field")
 					.onClick(() => {
-						new PropertyEditModal(this.app, prop, s.outputProperties, async (updated) => {
-							const idx = s.outputProperties.findIndex((p) => p.id === prop.id);
-							if (idx !== -1) s.outputProperties[idx] = updated;
-							await this.plugin.saveSettings();
-							this.display();
-						}).open();
+						openPropertyEditView(this.plugin, prop.id);
 					})
 			);
 			row.addExtraButton((btn) =>
@@ -348,8 +343,8 @@ export class DigestSettingTab extends PluginSettingTab {
 		}
 
 		new Setting(containerEl).addButton((btn) =>
-			btn.setButtonText("Add field").onClick(() => {
-				const draft: PropertyDefinition = {
+			btn.setButtonText("Add field").onClick(async () => {
+				const created: PropertyDefinition = {
 					id: crypto.randomUUID(),
 					name: "",
 					type: "string",
@@ -357,11 +352,10 @@ export class DigestSettingTab extends PluginSettingTab {
 					description: "",
 					instructions: "",
 				};
-				new PropertyEditModal(this.app, draft, s.outputProperties, async (created) => {
-					s.outputProperties.push(created);
-					await this.plugin.saveSettings();
-					this.display();
-				}).open();
+				s.outputProperties.push(created);
+				await this.plugin.saveSettings();
+				this.display();
+				await openPropertyEditView(this.plugin, created.id);
 			})
 		);
 	}

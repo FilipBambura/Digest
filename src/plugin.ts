@@ -21,6 +21,8 @@ import { DiffModal } from "./modals/diff-modal";
 import { FolderScopeModal } from "./modals/folder-scope-modal";
 import { BatchReviewEntry, BatchReviewModal } from "./modals/batch-review-modal";
 import { DigestSettingTab } from "./settings-tab";
+import { PropertyEditView, VIEW_TYPE_PROPERTY_EDIT } from "./views/property-edit-view";
+import { InstructionsEditView, VIEW_TYPE_INSTRUCTIONS_EDIT } from "./views/instructions-edit-view";
 
 export default class DigestPlugin extends Plugin {
 	settings!: DigestSettings;
@@ -61,6 +63,9 @@ export default class DigestPlugin extends Plugin {
 
 		this.addSettingTab(new DigestSettingTab(this.app, this));
 
+		this.registerView(VIEW_TYPE_PROPERTY_EDIT, (leaf) => new PropertyEditView(leaf, this));
+		this.registerView(VIEW_TYPE_INSTRUCTIONS_EDIT, (leaf) => new InstructionsEditView(leaf, this));
+
 		this.registerEvent(
 			this.app.workspace.on("file-menu", (menu, file) => {
 				if (file instanceof TFile && file.extension === "md") {
@@ -91,6 +96,8 @@ export default class DigestPlugin extends Plugin {
 
 	onunload() {
 		this.lock();
+		this.app.workspace.detachLeavesOfType(VIEW_TYPE_PROPERTY_EDIT);
+		this.app.workspace.detachLeavesOfType(VIEW_TYPE_INSTRUCTIONS_EDIT);
 	}
 
 	async loadSettings() {
