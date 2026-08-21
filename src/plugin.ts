@@ -216,6 +216,9 @@ export default class DigestPlugin extends Plugin {
 					await ensureFrontmatterAtFileStart(this.app, file);
 					await this.app.fileManager.processFrontMatter(file, (fm) => {
 						for (const p of properties) {
+							if (!this.settings.forceAddMissingProperties && !Object.prototype.hasOwnProperty.call(fm, p.name)) {
+								continue;
+							}
 							fm[p.name] = proposed[p.name];
 						}
 					});
@@ -435,6 +438,9 @@ export default class DigestPlugin extends Plugin {
 				await ensureFrontmatterAtFileStart(this.app, entry.file);
 				await this.app.fileManager.processFrontMatter(entry.file, (fm) => {
 					for (const p of properties) {
+						if (!this.settings.forceAddMissingProperties && !Object.prototype.hasOwnProperty.call(fm, p.name)) {
+							continue;
+						}
 						fm[p.name] = (entry.proposed as NoteMetadata)[p.name];
 					}
 				});

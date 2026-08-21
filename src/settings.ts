@@ -17,6 +17,7 @@ export interface DigestSettings {
 	requestTimeoutSeconds: number;
 	parallelRequests: number;
 	outputProperties: PropertyDefinition[];
+	forceAddMissingProperties: boolean;
 	encryptKeys: boolean;
 	freeApiKey: string;
 	paidApiKey: string;
@@ -68,6 +69,7 @@ export const DEFAULT_SETTINGS: DigestSettings = {
 	requestTimeoutSeconds: 30,
 	parallelRequests: 3,
 	outputProperties: DEFAULT_OUTPUT_PROPERTIES,
+	forceAddMissingProperties: false,
 	encryptKeys: false,
 	freeApiKey: "",
 	paidApiKey: "",

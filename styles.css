@@ -1,23 +1,45 @@
-/* Output field editor (Settings -> Output fields -> pencil icon; opens as a
-   workspace tab, replacing the plugin's own modal chrome entirely). */
+/* Output field editor (Settings -> Output fields -> pencil icon). Desktop
+   opens this as a workspace tab; mobile opens the equivalent Modal
+   (.digest-property-modal below) instead, since a custom View/leaf doesn't
+   get a working Android back-button close path for free. */
 .digest-property-view {
 	padding: var(--size-4-4);
 	max-width: 640px;
 }
 
+.modal.digest-property-modal {
+	width: 640px;
+	max-width: 92vw;
+}
+
 /* Instructions editor (Output field editor -> pencil icon next to
-   Instructions; also opens as its own workspace tab). */
+   Instructions). Desktop: workspace tab. Mobile: Modal. Sizing for both
+   textarea variants is handled in JS (src/views/textarea-autosize.ts) -
+   a pure CSS flex/height:100% chain is unreliable on mobile, where the
+   layout-vs-visual-viewport split (keyboard open) breaks height
+   propagation through ancestor elements. */
 .digest-instructions-view {
-	display: flex;
-	flex-direction: column;
-	height: 100%;
 	padding: var(--size-4-4);
 }
 
+.modal.digest-instructions-modal {
+	width: 640px;
+	max-width: 92vw;
+}
+
 .digest-instructions-textarea {
-	flex: 1;
+	display: block;
 	width: 100%;
 	resize: none;
+}
+
+/* Description textarea (Output field editor - full width, below the label,
+   instead of the cramped single-line input next to it). */
+.digest-description-textarea {
+	display: block;
+	width: 100%;
+	resize: none;
+	margin-bottom: 0.75rem;
 }
 
 /* Shared old/new + chip-diff rendering, reused by both the single-note

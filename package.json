@@ -1,6 +1,6 @@
 {
   "name": "digest",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Fills in Summary, Keywords and Aliases in a note's YAML frontmatter using the Gemini API (free/paid tier fallback, optional encryption for API keys, per-run logging).",
   "main": "main.js",
   "scripts": {

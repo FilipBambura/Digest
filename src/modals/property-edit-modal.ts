@@ -1,56 +1,26 @@
-import { ItemView, Notice, Platform, Setting, ViewStateResult, WorkspaceLeaf } from "obsidian";
-import { PropertyEditModal } from "../modals/property-edit-modal";
+import { App, Modal, Notice, Setting } from "obsidian";
 import type DigestPlugin from "../plugin";
 import { PROPERTY_ITEM_COUNT_MAX, PROPERTY_ITEM_COUNT_MIN } from "../settings";
 import { PropertyDefinition, PropertyType } from "../types";
-import { openInstructionsEditor } from "./instructions-edit-view";
-import { autosizeClamped } from "./textarea-autosize";
-import { closeSettingsIfOpen } from "./workspace-utils";
+import { autosizeClamped } from "../views/textarea-autosize";
+import { openInstructionsEditor } from "../views/instructions-edit-view";
 
-export const VIEW_TYPE_PROPERTY_EDIT = "digest-property-edit";
-
-interface PropertyEditState {
-	propertyId: string;
-}
-
-export class PropertyEditView extends ItemView {
+export class PropertyEditModal extends Modal {
 	private plugin: DigestPlugin;
-	private propertyId = "";
+	private propertyId: string;
 
-	constructor(leaf: WorkspaceLeaf, plugin: DigestPlugin) {
-		super(leaf);
+	constructor(app: App, plugin: DigestPlugin, propertyId: string) {
+		super(app);
 		this.plugin = plugin;
-	}
-
-	getViewType() {
-		return VIEW_TYPE_PROPERTY_EDIT;
-	}
-
-	getIcon() {
-		return "pencil";
-	}
-
-	getDisplayText() {
-		const prop = this.property;
-		return prop ? `Edit "${prop.name || "unnamed"}"` : "Edit output field";
+		this.propertyId = propertyId;
 	}
 
 	private get property(): PropertyDefinition | undefined {
 		return this.plugin.settings.outputProperties.find((p) => p.id === this.propertyId);
 	}
 
-	async setState(state: unknown, result: ViewStateResult) {
-		const typed = state as PropertyEditState;
-		if (typed?.propertyId) this.propertyId = typed.propertyId;
-		this.render();
-		await super.setState(state, result);
-	}
-
-	getState(): Record<string, unknown> {
-		return { propertyId: this.propertyId };
-	}
-
-	async onOpen() {
+	onOpen() {
+		this.modalEl.addClass("digest-property-modal");
 		this.render();
 	}
 
@@ -58,7 +28,6 @@ export class PropertyEditView extends ItemView {
 		const prop = this.property;
 		const { contentEl } = this;
 		contentEl.empty();
-		contentEl.addClass("digest-property-view");
 
 		if (!prop) {
 			contentEl.createEl("p", { text: "This field no longer exists." });
@@ -201,15 +170,4 @@ export class PropertyEditView extends ItemView {
 		await this.plugin.saveSettings();
 		this.contentEl.empty();
 	}
-}
-
-export async function openPropertyEditor(plugin: DigestPlugin, propertyId: string) {
-	if (Platform.isMobile) {
-		new PropertyEditModal(plugin.app, plugin, propertyId).open();
-		return;
-	}
-	closeSettingsIfOpen(plugin.app);
-	const leaf = plugin.app.workspace.getLeaf("tab");
-	await leaf.setViewState({ type: VIEW_TYPE_PROPERTY_EDIT, active: true, state: { propertyId } });
-	plugin.app.workspace.revealLeaf(leaf);
 }

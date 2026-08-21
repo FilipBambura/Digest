@@ -1,5 +1,7 @@
-import { ItemView, ViewStateResult, WorkspaceLeaf } from "obsidian";
+import { ItemView, Platform, ViewStateResult, WorkspaceLeaf } from "obsidian";
+import { InstructionsEditModal } from "../modals/instructions-edit-modal";
 import type DigestPlugin from "../plugin";
+import { autosizeFillAvailable } from "./textarea-autosize";
 import { closeSettingsIfOpen } from "./workspace-utils";
 
 export const VIEW_TYPE_INSTRUCTIONS_EDIT = "digest-instructions-edit";
@@ -11,6 +13,7 @@ interface InstructionsEditState {
 export class InstructionsEditView extends ItemView {
 	private plugin: DigestPlugin;
 	private propertyId = "";
+	private cleanupAutosize: (() => void) | null = null;
 
 	constructor(leaf: WorkspaceLeaf, plugin: DigestPlugin) {
 		super(leaf);
@@ -50,6 +53,9 @@ export class InstructionsEditView extends ItemView {
 	}
 
 	private render() {
+		this.cleanupAutosize?.();
+		this.cleanupAutosize = null;
+
 		const prop = this.property;
 		const { contentEl } = this;
 		contentEl.empty();
@@ -74,16 +80,23 @@ export class InstructionsEditView extends ItemView {
 		textarea.addEventListener("blur", async () => {
 			await this.plugin.saveSettings();
 		});
+		this.cleanupAutosize = autosizeFillAvailable(textarea, 5);
 		window.setTimeout(() => textarea.focus(), 0);
 	}
 
 	async onClose() {
+		this.cleanupAutosize?.();
+		this.cleanupAutosize = null;
 		await this.plugin.saveSettings();
 		this.contentEl.empty();
 	}
 }
 
-export async function openInstructionsEditView(plugin: DigestPlugin, propertyId: string) {
+export async function openInstructionsEditor(plugin: DigestPlugin, propertyId: string) {
+	if (Platform.isMobile) {
+		new InstructionsEditModal(plugin.app, plugin, propertyId).open();
+		return;
+	}
 	closeSettingsIfOpen(plugin.app);
 	const leaf = plugin.app.workspace.getLeaf("tab");
 	await leaf.setViewState({ type: VIEW_TYPE_INSTRUCTIONS_EDIT, active: true, state: { propertyId } });

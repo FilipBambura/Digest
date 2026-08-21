@@ -7,7 +7,7 @@ import { LOG_RETENTION_DAYS, buildLogExportMarkdown, logsDir, readAllLogEntries 
 import { loadBatchJob } from "./batch/job-store";
 import { promptForPassword } from "./modals/password-prompt-modal";
 import { confirmDialog } from "./modals/confirm-modal";
-import { openPropertyEditView } from "./views/property-edit-view";
+import { openPropertyEditor } from "./views/property-edit-view";
 
 // Local (not UTC) YYYY-MM-DD, so the date picker's default matches the
 // user's own calendar day instead of shifting near midnight in some timezones.
@@ -41,6 +41,19 @@ export class DigestSettingTab extends PluginSettingTab {
 			text: "Fields Digest fills in a note's frontmatter. Disable, edit or remove any of them, or add your own.",
 			cls: "setting-item-description",
 		});
+
+		new Setting(containerEl)
+			.setName("Force-add missing properties")
+			.setDesc(
+				"Off (default): only properties that already exist in a note's frontmatter are updated - new keys are never created. On: every enabled field is always written, even to notes that don't have it yet."
+			)
+			.addToggle((toggle) =>
+				toggle.setValue(s.forceAddMissingProperties).onChange(async (value) => {
+					s.forceAddMissingProperties = value;
+					await this.plugin.saveSettings();
+				})
+			);
+
 		this.renderOutputPropertiesSection(containerEl);
 
 		new Setting(containerEl)
@@ -320,7 +333,7 @@ export class DigestSettingTab extends PluginSettingTab {
 					.setIcon("pencil")
 					.setTooltip("Edit field")
 					.onClick(() => {
-						openPropertyEditView(this.plugin, prop.id);
+						openPropertyEditor(this.plugin, prop.id);
 					})
 			);
 			row.addExtraButton((btn) =>
@@ -355,7 +368,7 @@ export class DigestSettingTab extends PluginSettingTab {
 				s.outputProperties.push(created);
 				await this.plugin.saveSettings();
 				this.display();
-				await openPropertyEditView(this.plugin, created.id);
+				await openPropertyEditor(this.plugin, created.id);
 			})
 		);
 	}
