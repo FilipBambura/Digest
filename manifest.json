@@ -1,9 +1,9 @@
 {
-  "id": "digest",
-  "name": "Digest",
-  "version": "0.1.1",
-  "minAppVersion": "1.4.0",
-  "description": "Fills in Summary, Keywords and Aliases in a note's YAML frontmatter using the Gemini API (free/paid tier fallback, optional encryption for API keys, per-run logging).",
-  "author": "Filip Bambura",
-  "isDesktopOnly": false
+	"id": "digest",
+	"name": "Digest",
+	"version": "0.1.2",
+	"minAppVersion": "1.4.0",
+	"description": "Fills in Summary, Keywords and Aliases in a note's YAML frontmatter using the Gemini API (free/paid tier fallback, optional encryption for API keys, per-run logging).",
+	"author": "Filip Bambura",
+	"isDesktopOnly": false
 }
