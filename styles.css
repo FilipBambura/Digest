@@ -10,11 +10,13 @@
 	resize: vertical;
 }
 
-.digest-property-modal .modal-button-container {
+.digest-property-modal .digest-modal-header-buttons {
 	display: flex;
-	justify-content: flex-end;
+	justify-content: space-between;
+	align-items: center;
 	gap: 8px;
-	margin-top: 1rem;
+	margin-bottom: 1rem;
+	padding-right: 2rem;
 }
 
 /* Shared old/new + chip-diff rendering, reused by both the single-note

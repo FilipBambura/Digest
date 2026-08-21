@@ -29,6 +29,23 @@ export class PropertyEditModal extends Modal {
 	private render() {
 		const { contentEl } = this;
 		contentEl.empty();
+
+		const buttonRow = contentEl.createDiv({ cls: "digest-modal-header-buttons" });
+		const cancelBtn = buttonRow.createEl("button", { text: "Cancel" });
+		cancelBtn.addEventListener("click", () => this.close());
+		const saveBtn = buttonRow.createEl("button", { text: "Save", cls: "mod-cta" });
+		saveBtn.addEventListener("click", async () => {
+			const error = this.validate();
+			if (error) {
+				new Notice(error);
+				return;
+			}
+			this.clampCounts();
+			saveBtn.disabled = true;
+			await this.onSave(this.draft);
+			this.close();
+		});
+
 		contentEl.createEl("h2", { text: this.isNew ? "Add output field" : `Edit "${this.draft.name}"` });
 
 		new Setting(contentEl)
@@ -102,22 +119,6 @@ export class PropertyEditModal extends Modal {
 					});
 				});
 		}
-
-		const buttonRow = contentEl.createDiv({ cls: "modal-button-container" });
-		const cancelBtn = buttonRow.createEl("button", { text: "Cancel" });
-		cancelBtn.addEventListener("click", () => this.close());
-		const saveBtn = buttonRow.createEl("button", { text: "Save", cls: "mod-cta" });
-		saveBtn.addEventListener("click", async () => {
-			const error = this.validate();
-			if (error) {
-				new Notice(error);
-				return;
-			}
-			this.clampCounts();
-			saveBtn.disabled = true;
-			await this.onSave(this.draft);
-			this.close();
-		});
 	}
 
 	private validate(): string | null {
