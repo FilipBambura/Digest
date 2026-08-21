@@ -1,6 +1,7 @@
 import { App, Modal, Notice, Setting } from "obsidian";
 import { PROPERTY_ITEM_COUNT_MAX, PROPERTY_ITEM_COUNT_MIN } from "../settings";
 import { PropertyDefinition, PropertyType } from "../types";
+import { InstructionsEditModal } from "./instructions-edit-modal";
 
 export class PropertyEditModal extends Modal {
 	private draft: PropertyDefinition;
@@ -81,13 +82,18 @@ export class PropertyEditModal extends Modal {
 				text.onChange((value) => (this.draft.description = value));
 			});
 
-		const instructionsSetting = new Setting(contentEl)
+		new Setting(contentEl)
 			.setName("Instructions")
-			.setDesc("How to generate this field - sent to the model together with the note content.");
-		const textarea = instructionsSetting.controlEl.createEl("textarea");
-		textarea.value = this.draft.instructions;
-		textarea.rows = 5;
-		textarea.addEventListener("input", () => (this.draft.instructions = textarea.value));
+			.setDesc("How to generate this field - sent to the model together with the note content.")
+			.addExtraButton((btn) => {
+				btn.setIcon("pencil")
+					.setTooltip("Edit instructions")
+					.onClick(() => {
+						new InstructionsEditModal(this.app, this.draft.instructions, (value) => {
+							this.draft.instructions = value;
+						}).open();
+					});
+			});
 
 		if (this.draft.type === "string[]") {
 			new Setting(contentEl)

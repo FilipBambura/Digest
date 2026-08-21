@@ -10,13 +10,25 @@
 	resize: vertical;
 }
 
-.digest-property-modal .digest-modal-header-buttons {
+.digest-modal-header-buttons {
 	display: flex;
 	justify-content: space-between;
 	align-items: center;
 	gap: 8px;
 	margin-bottom: 1rem;
 	padding-right: 2rem;
+}
+
+/* Instructions editor modal (Output field editor -> pencil icon next to Instructions). */
+.modal.digest-instructions-modal {
+	width: 640px;
+	max-width: 92vw;
+}
+
+.digest-instructions-modal textarea {
+	width: 100%;
+	min-height: 300px;
+	resize: vertical;
 }
 
 /* Shared old/new + chip-diff rendering, reused by both the single-note
