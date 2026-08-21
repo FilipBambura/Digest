@@ -69,3 +69,31 @@ export function autosizeFillAvailable(textarea: HTMLTextAreaElement, minRows: nu
 		window.visualViewport?.removeEventListener("scroll", resize);
 	};
 }
+
+/**
+ * Caps `el`'s height to the visible viewport (shrinking as the on-screen
+ * keyboard opens) and makes it scroll internally past that cap, so content
+ * hidden behind the keyboard can always be reached by scrolling. Deliberately
+ * ignores the element's own position (no `getBoundingClientRect`) and uses
+ * only `visualViewport.height` - on iOS, a stacked modal on top of another
+ * can make `visualViewport.offsetTop` drift, but the height itself stays
+ * reliable.
+ */
+export function bindScrollableHeight(el: HTMLElement, marginPx = 96): () => void {
+	const resize = () => {
+		const viewportHeight = window.visualViewport?.height ?? window.innerHeight;
+		el.style.maxHeight = `${Math.max(viewportHeight - marginPx, 160)}px`;
+	};
+
+	el.style.overflowY = "auto";
+	window.addEventListener("resize", resize);
+	window.visualViewport?.addEventListener("resize", resize);
+	window.visualViewport?.addEventListener("scroll", resize);
+	resize();
+
+	return () => {
+		window.removeEventListener("resize", resize);
+		window.visualViewport?.removeEventListener("resize", resize);
+		window.visualViewport?.removeEventListener("scroll", resize);
+	};
+}

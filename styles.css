@@ -13,11 +13,11 @@
 }
 
 /* Instructions editor (Output field editor -> pencil icon next to
-   Instructions). Desktop: workspace tab. Mobile: Modal. Sizing for both
-   textarea variants is handled in JS (src/views/textarea-autosize.ts) -
-   a pure CSS flex/height:100% chain is unreliable on mobile, where the
-   layout-vs-visual-viewport split (keyboard open) breaks height
-   propagation through ancestor elements. */
+   Instructions). Desktop: workspace tab. Mobile: Modal. Textarea sizing is
+   handled in JS (src/views/textarea-autosize.ts) - a pure CSS flex/
+   height:100% chain is unreliable on mobile, where the layout-vs-visual-
+   viewport split (keyboard open) breaks height propagation through
+   ancestor elements. */
 .digest-instructions-view {
 	padding: var(--size-4-4);
 }
@@ -25,6 +25,16 @@
 .modal.digest-instructions-modal {
 	width: 640px;
 	max-width: 92vw;
+}
+
+/* On mobile, both editor modals' content area is capped to the visible
+   (keyboard-shrunk) viewport height and scrolls internally
+   (bindScrollableHeight in textarea-autosize.ts), so any field the
+   on-screen keyboard would otherwise cover can still be reached by
+   scrolling. */
+.modal.digest-property-modal .modal-content,
+.modal.digest-instructions-modal .modal-content {
+	overflow-y: auto;
 }
 
 .digest-instructions-textarea {

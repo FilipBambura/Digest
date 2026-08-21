@@ -1,11 +1,12 @@
 import { App, Modal } from "obsidian";
 import type DigestPlugin from "../plugin";
-import { autosizeFillAvailable } from "../views/textarea-autosize";
+import { autosizeClamped, bindScrollableHeight } from "../views/textarea-autosize";
 
 export class InstructionsEditModal extends Modal {
 	private plugin: DigestPlugin;
 	private propertyId: string;
 	private cleanupAutosize: (() => void) | null = null;
+	private cleanupScroll: (() => void) | null = null;
 
 	constructor(app: App, plugin: DigestPlugin, propertyId: string) {
 		super(app);
@@ -19,6 +20,7 @@ export class InstructionsEditModal extends Modal {
 
 	onOpen() {
 		this.modalEl.addClass("digest-instructions-modal");
+		this.cleanupScroll = bindScrollableHeight(this.contentEl);
 		const prop = this.property;
 		const { contentEl } = this;
 		contentEl.empty();
@@ -42,13 +44,15 @@ export class InstructionsEditModal extends Modal {
 		textarea.addEventListener("blur", async () => {
 			await this.plugin.saveSettings();
 		});
-		this.cleanupAutosize = autosizeFillAvailable(textarea, 5);
+		this.cleanupAutosize = autosizeClamped(textarea, 5, 16);
 		window.setTimeout(() => textarea.focus(), 0);
 	}
 
 	async onClose() {
 		this.cleanupAutosize?.();
 		this.cleanupAutosize = null;
+		this.cleanupScroll?.();
+		this.cleanupScroll = null;
 		await this.plugin.saveSettings();
 		this.contentEl.empty();
 	}

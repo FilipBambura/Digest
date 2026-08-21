@@ -2,12 +2,13 @@ import { App, Modal, Notice, Setting } from "obsidian";
 import type DigestPlugin from "../plugin";
 import { PROPERTY_ITEM_COUNT_MAX, PROPERTY_ITEM_COUNT_MIN } from "../settings";
 import { PropertyDefinition, PropertyType } from "../types";
-import { autosizeClamped } from "../views/textarea-autosize";
+import { autosizeClamped, bindScrollableHeight } from "../views/textarea-autosize";
 import { openInstructionsEditor } from "../views/instructions-edit-view";
 
 export class PropertyEditModal extends Modal {
 	private plugin: DigestPlugin;
 	private propertyId: string;
+	private cleanupScroll: (() => void) | null = null;
 
 	constructor(app: App, plugin: DigestPlugin, propertyId: string) {
 		super(app);
@@ -21,6 +22,7 @@ export class PropertyEditModal extends Modal {
 
 	onOpen() {
 		this.modalEl.addClass("digest-property-modal");
+		this.cleanupScroll = bindScrollableHeight(this.contentEl);
 		this.render();
 	}
 
@@ -167,6 +169,8 @@ export class PropertyEditModal extends Modal {
 	}
 
 	async onClose() {
+		this.cleanupScroll?.();
+		this.cleanupScroll = null;
 		await this.plugin.saveSettings();
 		this.contentEl.empty();
 	}
