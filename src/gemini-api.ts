@@ -4,29 +4,6 @@ import { NoteMetadata } from "./types";
 const API_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/interactions";
 const API_REVISION = "2026-05-20";
 
-const METADATA_SCHEMA = {
-	type: "object",
-	properties: {
-		Summary: {
-			type: "string",
-			description: "1-2 sentences following the formula Goal/Problem + Technology/Method + Result/Condition.",
-		},
-		Keywords: {
-			type: "array",
-			items: { type: "string" },
-			minItems: 5,
-			maxItems: 10,
-		},
-		Aliases: {
-			type: "array",
-			items: { type: "string" },
-			minItems: 1,
-		},
-	},
-	required: ["Summary", "Keywords", "Aliases"],
-	additionalProperties: false,
-};
-
 export class RateLimitError extends Error {}
 export class TimeoutError extends Error {}
 
@@ -48,11 +25,16 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
 	});
 }
 
+// Pure single-key HTTP layer: knows nothing about settings, tiers, keys, or
+// which fields exist - it just sends one system prompt + one user prompt
+// against one schema, with one key. All of that composition happens in
+// gemini-client.ts / property-schema.ts.
 export async function callModelOnce(
 	apiKey: string,
 	model: string,
 	systemPrompt: string,
-	noteContent: string,
+	userPrompt: string,
+	schema: Record<string, unknown>,
 	timeoutMs: number
 ): Promise<NoteMetadata> {
 	const res = await withTimeout(
@@ -68,11 +50,11 @@ export async function callModelOnce(
 			body: JSON.stringify({
 				model,
 				system_instruction: systemPrompt,
-				input: noteContent,
+				input: userPrompt,
 				response_format: {
 					type: "text",
 					mime_type: "application/json",
-					schema: METADATA_SCHEMA,
+					schema,
 				},
 			}),
 		}),

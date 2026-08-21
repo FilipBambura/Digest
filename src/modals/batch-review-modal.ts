@@ -1,6 +1,6 @@
 import { App, Modal, TFile } from "obsidian";
 import { BatchFileStatus } from "../batch/job-store";
-import { NoteMetadata } from "../types";
+import { NoteMetadata, PropertyDefinition } from "../types";
 import { renderMetadataDiff } from "./metadata-diff-view";
 
 export interface BatchReviewEntry {
@@ -12,11 +12,18 @@ export interface BatchReviewEntry {
 }
 
 export class BatchReviewModal extends Modal {
+	private properties: PropertyDefinition[];
 	private entries: BatchReviewEntry[];
 	private onApply: (chosen: BatchReviewEntry[]) => Promise<void>;
 
-	constructor(app: App, entries: BatchReviewEntry[], onApply: (chosen: BatchReviewEntry[]) => Promise<void>) {
+	constructor(
+		app: App,
+		properties: PropertyDefinition[],
+		entries: BatchReviewEntry[],
+		onApply: (chosen: BatchReviewEntry[]) => Promise<void>
+	) {
 		super(app);
+		this.properties = properties;
 		this.entries = entries;
 		this.onApply = onApply;
 	}
@@ -52,7 +59,7 @@ export class BatchReviewModal extends Modal {
 			});
 			summary.createSpan({ text: entry.file.path });
 			const body = details.createDiv({ cls: "digest-batch-body" });
-			renderMetadataDiff(body, entry.old as NoteMetadata, entry.proposed as NoteMetadata);
+			renderMetadataDiff(body, this.properties, entry.old as NoteMetadata, entry.proposed as NoteMetadata);
 		}
 
 		const buttonRow = contentEl.createDiv({ cls: "modal-button-container" });

@@ -1,10 +1,13 @@
 // Owns the free/paid tier duality end-to-end: key selection, the
 // free-then-paid-on-rate-limit fallback, request-count bookkeeping, and
-// per-run logging. Callers just call generateMetadata() - they never see
-// which tier was used or that there are two keys at all.
+// per-run logging. Also owns turning the current output field settings
+// into the actual schema/prompt sent to Gemini. Callers just call
+// generateMetadata() - they never see tiers, keys, or the schema.
 
 import type DigestPlugin from "./plugin";
 import { RateLimitError, callModelOnce } from "./gemini-api";
+import { buildJsonSchema, buildUserPrompt, enabledProperties } from "./property-schema";
+import { DEFAULT_SYSTEM_PROMPT } from "./system-prompt";
 import { logEvent } from "./logging";
 import { NoteMetadata, Tier } from "./types";
 
@@ -39,21 +42,32 @@ export class GeminiClient {
 		const paidKey = this.plugin.getPaidKey();
 		const timeoutMs = Math.max(1, settings.requestTimeoutSeconds || 30) * 1000;
 
+		const properties = enabledProperties(settings.outputProperties);
+		const schema = buildJsonSchema(properties);
+		const userPrompt = buildUserPrompt(properties, noteContent);
+
 		if (settings.tierMode === "paidOnly") {
 			if (!paidKey) throw new Error("Missing paid tier API key.");
-			const data = await callModelOnce(paidKey, settings.model, settings.systemPrompt, noteContent, timeoutMs);
+			const data = await callModelOnce(paidKey, settings.model, DEFAULT_SYSTEM_PROMPT, userPrompt, schema, timeoutMs);
 			return { data, tier: "paid" };
 		}
 
 		if (settings.tierMode === "freeOnly") {
 			if (!freeKey) throw new Error("Missing free tier API key.");
-			const data = await callModelOnce(freeKey, settings.model, settings.systemPrompt, noteContent, timeoutMs);
+			const data = await callModelOnce(freeKey, settings.model, DEFAULT_SYSTEM_PROMPT, userPrompt, schema, timeoutMs);
 			return { data, tier: "free" };
 		}
 
 		if (freeKey) {
 			try {
-				const data = await callModelOnce(freeKey, settings.model, settings.systemPrompt, noteContent, timeoutMs);
+				const data = await callModelOnce(
+					freeKey,
+					settings.model,
+					DEFAULT_SYSTEM_PROMPT,
+					userPrompt,
+					schema,
+					timeoutMs
+				);
 				return { data, tier: "free" };
 			} catch (e) {
 				if (!(e instanceof RateLimitError)) throw e;
@@ -63,7 +77,7 @@ export class GeminiClient {
 		if (!paidKey) {
 			throw new Error("Free tier limit reached (or the free key is missing) and no paid tier key is configured.");
 		}
-		const data = await callModelOnce(paidKey, settings.model, settings.systemPrompt, noteContent, timeoutMs);
+		const data = await callModelOnce(paidKey, settings.model, DEFAULT_SYSTEM_PROMPT, userPrompt, schema, timeoutMs);
 		return { data, tier: "paid" };
 	}
 

@@ -1,12 +1,13 @@
-import { App, Notice, PluginSettingTab, Setting, normalizePath } from "obsidian";
+import { App, Notice, Platform, PluginSettingTab, Setting, normalizePath } from "obsidian";
 import type DigestPlugin from "./plugin";
 import { MODEL_PRESETS, TierMode } from "./settings";
+import { PropertyDefinition } from "./types";
 import { ENCRYPTION_CHECK_VALUE, encryptString } from "./crypto";
 import { LOG_RETENTION_DAYS, buildLogExportMarkdown, logsDir, readAllLogEntries } from "./logging";
 import { loadBatchJob } from "./batch/job-store";
 import { promptForPassword } from "./modals/password-prompt-modal";
 import { confirmDialog } from "./modals/confirm-modal";
-import { SystemPromptModal } from "./modals/system-prompt-modal";
+import { PropertyEditModal } from "./modals/property-edit-modal";
 
 // Local (not UTC) YYYY-MM-DD, so the date picker's default matches the
 // user's own calendar day instead of shifting near midnight in some timezones.
@@ -30,22 +31,17 @@ export class DigestSettingTab extends PluginSettingTab {
 		containerEl.empty();
 		const s = this.plugin.settings;
 
-		const batchSection = containerEl.createDiv();
-		this.renderBatchJobSection(batchSection);
+		if (Platform.isDesktopApp) {
+			const batchSection = containerEl.createDiv();
+			this.renderBatchJobSection(batchSection);
+		}
 
-		new Setting(containerEl)
-			.setName("System prompt")
-			.setDesc("Instructions sent together with the note's body when generating metadata.")
-			.addExtraButton((btn) => {
-				btn.setIcon("pencil")
-					.setTooltip("Edit system prompt")
-					.onClick(() => {
-						new SystemPromptModal(this.app, s.systemPrompt, async (value) => {
-							s.systemPrompt = value;
-							await this.plugin.saveSettings();
-						}).open();
-					});
-			});
+		containerEl.createEl("h3", { text: "Output fields" });
+		containerEl.createEl("p", {
+			text: "Fields Digest fills in a note's frontmatter. Disable, edit or remove any of them, or add your own.",
+			cls: "setting-item-description",
+		});
+		this.renderOutputPropertiesSection(containerEl);
 
 		new Setting(containerEl)
 			.setName("Manual model entry")
@@ -107,23 +103,28 @@ export class DigestSettingTab extends PluginSettingTab {
 				});
 			});
 
-		new Setting(containerEl)
-			.setName("Parallel requests")
-			.setDesc("Number of notes for which metadata is generated in parallel during a folder batch.")
-			.addText((text) => {
-				text.setValue(String(s.parallelRequests));
-				text.inputEl.type = "number";
-				text.inputEl.min = "1";
-				text.onChange((value) => {
-					const n = parseInt(value, 10);
-					if (!Number.isNaN(n) && n > 0) {
-						s.parallelRequests = n;
-					}
+		if (Platform.isDesktopApp) {
+			// Folder batches are desktop-only (see the file-menu gating in
+			// plugin.ts), so this setting would be meaningless - and confusing -
+			// on a platform where it can never be used.
+			new Setting(containerEl)
+				.setName("Parallel requests")
+				.setDesc("Number of notes for which metadata is generated in parallel during a folder batch.")
+				.addText((text) => {
+					text.setValue(String(s.parallelRequests));
+					text.inputEl.type = "number";
+					text.inputEl.min = "1";
+					text.onChange((value) => {
+						const n = parseInt(value, 10);
+						if (!Number.isNaN(n) && n > 0) {
+							s.parallelRequests = n;
+						}
+					});
+					text.inputEl.addEventListener("blur", async () => {
+						await this.plugin.saveSettings();
+					});
 				});
-				text.inputEl.addEventListener("blur", async () => {
-					await this.plugin.saveSettings();
-				});
-			});
+		}
 
 		containerEl.createEl("h3", { text: "API keys" });
 
@@ -299,6 +300,70 @@ export class DigestSettingTab extends PluginSettingTab {
 						this.display();
 					})
 			);
+	}
+
+	private renderOutputPropertiesSection(containerEl: HTMLElement) {
+		const s = this.plugin.settings;
+
+		for (const prop of s.outputProperties) {
+			const row = new Setting(containerEl)
+				.setName(prop.name || "(unnamed)")
+				.setDesc(prop.description || (prop.type === "string[]" ? "List of text" : "Text"));
+			row.addToggle((toggle) =>
+				toggle.setValue(prop.enabled).onChange(async (value) => {
+					prop.enabled = value;
+					await this.plugin.saveSettings();
+				})
+			);
+			row.addExtraButton((btn) =>
+				btn
+					.setIcon("pencil")
+					.setTooltip("Edit field")
+					.onClick(() => {
+						new PropertyEditModal(this.app, prop, s.outputProperties, async (updated) => {
+							const idx = s.outputProperties.findIndex((p) => p.id === prop.id);
+							if (idx !== -1) s.outputProperties[idx] = updated;
+							await this.plugin.saveSettings();
+							this.display();
+						}).open();
+					})
+			);
+			row.addExtraButton((btn) =>
+				btn
+					.setIcon("trash")
+					.setTooltip("Remove field")
+					.onClick(async () => {
+						const confirmed = await confirmDialog(
+							this.app,
+							"Remove field?",
+							`"${prop.name}" will no longer be generated or offered here. Values already written to notes are not affected.`,
+							"Remove"
+						);
+						if (!confirmed) return;
+						s.outputProperties = s.outputProperties.filter((p) => p.id !== prop.id);
+						await this.plugin.saveSettings();
+						this.display();
+					})
+			);
+		}
+
+		new Setting(containerEl).addButton((btn) =>
+			btn.setButtonText("Add field").onClick(() => {
+				const draft: PropertyDefinition = {
+					id: crypto.randomUUID(),
+					name: "",
+					type: "string",
+					enabled: true,
+					description: "",
+					instructions: "",
+				};
+				new PropertyEditModal(this.app, draft, s.outputProperties, async (created) => {
+					s.outputProperties.push(created);
+					await this.plugin.saveSettings();
+					this.display();
+				}).open();
+			})
+		);
 	}
 
 	private renderPlainKeySection(containerEl: HTMLElement) {

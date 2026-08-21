@@ -13,17 +13,14 @@ It reads the note's content, sends it to Gemini together with a configurable sys
 - **Configurable model** — pick a preset (Lite / Flash / Pro) or type an exact model id.
 - **Optional API key encryption** — keys can be stored as AES-GCM ciphertext, derived from a password via PBKDF2 (250,000 iterations). The password itself is never persisted — only kept in memory for the running session, so it must be re-entered after every Obsidian restart.
 - **Per-device run log** — every generation attempt (success or error) is appended to a local JSONL log, auto-pruned after 30 days. Logs can be exported (by date range) to a Markdown note, or deleted entirely.
-- **Editable system prompt** — the instructions sent to the model are fully editable from Settings.
+- **Configurable output fields** — the frontmatter fields Digest generates (Summary, Keywords, Aliases by default) are edited from Settings, not hardcoded: add your own, disable or remove any of them, and set each one's own description/instructions and item count. See [Output fields](#output-fields) below.
+- **Platform-aware settings** — a setting or section only shows up in Settings when it's actually usable on the current device (e.g. batch-related settings are hidden on mobile).
 
 ## How it works
 
-1. The note's frontmatter is stripped and the remaining body is sent to Gemini along with the system prompt.
-2. The system prompt asks the model to return only JSON matching a fixed schema:
-   - **Summary** — 1–2 sentences following *Goal/Problem + Technology/Method + Result*.
-   - **Keywords** — roughly 5–10 items, lemmatized, with cross-language variants where relevant.
-   - **Aliases** — the question the note answers plus grammatical variants of the note's own name, so a `[[link]]` reads naturally in a sentence.
-   - The output language always matches the note's own language.
-3. The response is shown in a diff view (green = added, strikethrough = removed) for `Summary`, `Keywords`, and `Aliases`.
+1. The note's frontmatter is stripped and the remaining body is sent to Gemini, together with a static system prompt and a JSON schema built from your currently enabled [output fields](#output-fields).
+2. The system prompt (fixed, not editable) only sets the invariant rules: return JSON only, keep the output in the note's own language, don't invent facts, and follow each field's own instructions. Everything field-specific — what Summary should look like, how many Keywords, etc. — lives in that field's own configuration instead, so the two can never drift out of sync.
+3. The response is shown in a diff view (green = added, strikethrough = removed) for every enabled field.
 4. Only once you click **Accept changes** (or **Apply selected** for a batch) is the frontmatter actually updated, via Obsidian's `processFrontMatter` API.
 
 ## Installation
@@ -50,7 +47,20 @@ Open **Settings → Digest** and configure at least one API key:
 - **Tier mode** — automatic (recommended), free tier only, or paid tier only.
 - **Model** — a preset, or a manually entered model id.
 - **Request timeout** — how long to wait for a single API response before giving up.
-- **Parallel requests** — how many notes get their metadata generated at the same time during a folder batch (default 3).
+- **Parallel requests** — how many notes get their metadata generated at the same time during a folder batch (default 3). Desktop only — see [Mobile](#mobile).
+
+### Output fields
+
+Settings → Digest → **Output fields** lists the frontmatter fields Digest generates — `Summary`, `Keywords` and `Aliases` by default. Each one has:
+
+- **Enabled toggle** — turn a field off without losing its configuration. A disabled field is neither requested from Gemini nor written to frontmatter; existing values already in your notes are left untouched.
+- **Edit** (pencil icon) — opens a field's settings: its **name** (the YAML key it's written as), **type** (*Text* for a single value, *List of text* for an array like Keywords), a short **description** (schema-level, shown to the model as metadata), and free-form **instructions** (the actual guidance for how to generate it — e.g. Summary's Goal/Problem + Technology + Result formula). For a *List of text* field you also set **minimum/maximum items**, clamped between 1 and 20 so a single field can't blow up the response.
+- **Remove** (trash icon) — deletes the field entirely, after confirming.
+- **Add field** — creates a new field from scratch, with the same editor.
+
+There's no limit on how many fields you can define, but each list-type field is capped at 20 items so a single field can't overload the model — add more distinct fields rather than one enormous one if you need a lot of output.
+
+The system prompt itself is static and not exposed in Settings — it only sets the fixed rules (JSON-only output, match the note's language, don't invent facts, follow each field's instructions). Field-specific behavior always lives in that field's own **instructions**, assembled into the request fresh every time from your current output fields, so the prompt can never go stale relative to your settings.
 
 ### Encrypting your API keys
 
@@ -66,6 +76,8 @@ Turn on **Encrypt API keys with a password** to store the keys as AES-GCM cipher
 ### Mobile
 
 Folder batch generation is desktop-only: a batch can span many notes and is checkpointed so it survives an app restart, but iOS/Android can suspend or kill Obsidian's JS runtime while it's in the background, which would break a batch mid-run. Single-note generation has no such problem and works the same on mobile as on desktop.
+
+Since batch generation isn't available on mobile, the settings that only make sense for it — **Parallel requests** and the unfinished-batch resume/discard section — aren't shown there either.
 
 ## Logs
 
@@ -92,9 +104,10 @@ npm run build   # type-check + production build
 
 ```
 src/
-  system-prompt.ts     Default system prompt sent to Gemini
-  types.ts             Shared domain types (NoteMetadata, Tier, MetadataResult)
-  settings.ts          Settings shape, defaults, model presets
+  system-prompt.ts     Static, invariant system prompt sent to Gemini (not user-editable)
+  types.ts             Shared domain types (PropertyDefinition, NoteMetadata, Tier, MetadataResult)
+  settings.ts          Settings shape, defaults (incl. DEFAULT_OUTPUT_PROPERTIES), model presets
+  property-schema.ts   Turns the configured output fields into a JSON schema + user-prompt text
   crypto.ts            AES-GCM/PBKDF2 API key encryption
   frontmatter.ts        Frontmatter stripping/normalization helpers
   gemini-api.ts        Pure single-key Gemini HTTP request/response handling
@@ -107,14 +120,14 @@ src/
   modals/
     password-prompt-modal.ts
     confirm-modal.ts
-    system-prompt-modal.ts
+    property-edit-modal.ts   Add/edit one output field (name, type, description, instructions, item count)
     metadata-diff-view.ts   Shared diff rendering used by the two modals below
     diff-modal.ts
     folder-scope-modal.ts
     batch-review-modal.ts
 ```
 
-`gemini-api.ts` knows nothing about settings, tiers, or keys — it just makes one HTTP call with one key. `gemini-client.ts`'s `GeminiClient` is the only place that knows there are two tiers: it resolves both keys, applies the tier-fallback logic, updates the request counters, and writes the log entry, exposing a single `generateMetadata(notePath, noteContent)` call to the rest of the plugin.
+`gemini-api.ts` knows nothing about settings, tiers, fields, or keys — it just makes one HTTP call with one key, one prompt, and one schema. `property-schema.ts` turns the user's `outputProperties` into that schema and into the field-specific part of the user prompt. `gemini-client.ts`'s `GeminiClient` ties it together and is the only place that knows there are two tiers: it resolves both keys, applies the tier-fallback logic, updates the request counters, and writes the log entry, exposing a single `generateMetadata(notePath, noteContent)` call to the rest of the plugin.
 
 ## Privacy
 

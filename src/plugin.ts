@@ -1,8 +1,9 @@
 import { Notice, Platform, Plugin, TFile, TFolder } from "obsidian";
-import { DEFAULT_SETTINGS, DigestSettings } from "./settings";
+import { DEFAULT_OUTPUT_PROPERTIES, DEFAULT_SETTINGS, DigestSettings } from "./settings";
 import { ENCRYPTION_CHECK_VALUE, decryptString } from "./crypto";
 import { NoteMetadata } from "./types";
 import { GeminiClient } from "./gemini-client";
+import { emptyValueFor, enabledProperties } from "./property-schema";
 import { ensureFrontmatterAtFileStart, stripFrontmatter } from "./frontmatter";
 import { LOG_RETENTION_DAYS, getDeviceId, logEvent, pruneOwnLogs } from "./logging";
 import {
@@ -94,6 +95,13 @@ export default class DigestPlugin extends Plugin {
 
 	async loadSettings() {
 		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+		// Object.assign only shallow-copies, so without this an install with no
+		// saved outputProperties would end up with this.settings.outputProperties
+		// pointing at the very same array/objects as DEFAULT_OUTPUT_PROPERTIES -
+		// any later in-place edit (add/remove/toggle a field) would then mutate
+		// the shared default for the rest of the session.
+		const source = this.settings.outputProperties?.length ? this.settings.outputProperties : DEFAULT_OUTPUT_PROPERTIES;
+		this.settings.outputProperties = source.map((p) => ({ ...p }));
 	}
 
 	async saveSettings() {
@@ -187,21 +195,22 @@ export default class DigestPlugin extends Plugin {
 			notice.hide();
 
 			const cache = this.app.metadataCache.getFileCache(file)?.frontmatter;
-			const oldData: NoteMetadata = {
-				Summary: cache?.Summary ?? "",
-				Keywords: cache?.Keywords ?? [],
-				Aliases: cache?.Aliases ?? [],
-			};
+			const properties = enabledProperties(this.settings.outputProperties);
+			const oldData: NoteMetadata = {};
+			for (const p of properties) {
+				oldData[p.name] = cache?.[p.name] ?? emptyValueFor(p.type);
+			}
 
 			new DiffModal(this.app, {
+				properties,
 				old: oldData,
 				proposed,
 				onAccept: async () => {
 					await ensureFrontmatterAtFileStart(this.app, file);
 					await this.app.fileManager.processFrontMatter(file, (fm) => {
-						fm.Summary = proposed.Summary;
-						fm.Keywords = proposed.Keywords;
-						fm.Aliases = proposed.Aliases;
+						for (const p of properties) {
+							fm[p.name] = proposed[p.name];
+						}
 					});
 					new Notice("Metadata updated.");
 				},
@@ -313,11 +322,11 @@ export default class DigestPlugin extends Plugin {
 
 		const rawCache = this.app.metadataCache.getFileCache(file);
 		const cache = rawCache ? rawCache.frontmatter : null;
-		entry.old = {
-			Summary: (cache && cache.Summary) || "",
-			Keywords: (cache && cache.Keywords) || [],
-			Aliases: (cache && cache.Aliases) || [],
-		};
+		const properties = enabledProperties(this.settings.outputProperties);
+		entry.old = {};
+		for (const p of properties) {
+			entry.old[p.name] = (cache && cache[p.name]) || emptyValueFor(p.type);
+		}
 
 		try {
 			entry.proposed = await this.geminiClient.generateMetadata(entry.path, noteContent);
@@ -405,21 +414,22 @@ export default class DigestPlugin extends Plugin {
 			return;
 		}
 
-		new BatchReviewModal(this.app, successEntries, async (chosen) => {
+		new BatchReviewModal(this.app, enabledProperties(this.settings.outputProperties), successEntries, async (chosen) => {
 			await this.applyBatchEntries(chosen);
 		}).open();
 	}
 
 	private async applyBatchEntries(entries: BatchReviewEntry[]) {
+		const properties = enabledProperties(this.settings.outputProperties);
 		let applied = 0;
 		let failed = 0;
 		for (const entry of entries) {
 			try {
 				await ensureFrontmatterAtFileStart(this.app, entry.file);
 				await this.app.fileManager.processFrontMatter(entry.file, (fm) => {
-					fm.Summary = (entry.proposed as NoteMetadata).Summary;
-					fm.Keywords = (entry.proposed as NoteMetadata).Keywords;
-					fm.Aliases = (entry.proposed as NoteMetadata).Aliases;
+					for (const p of properties) {
+						fm[p.name] = (entry.proposed as NoteMetadata)[p.name];
+					}
 				});
 				applied++;
 			} catch (e) {

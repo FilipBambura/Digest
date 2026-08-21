@@ -1,4 +1,4 @@
-import { NoteMetadata } from "../types";
+import { NoteMetadata, PropertyDefinition } from "../types";
 
 function renderChipDiff(container: HTMLElement, before: string[] | undefined, after: string[] | undefined) {
 	const wrap = container.createDiv({ cls: "digest-chip-row" });
@@ -15,14 +15,22 @@ function renderChipDiff(container: HTMLElement, before: string[] | undefined, af
 	}
 }
 
-export function renderMetadataDiff(container: HTMLElement, oldData: NoteMetadata, proposed: NoteMetadata) {
-	container.createEl("h3", { text: "Summary" });
-	if (oldData.Summary) {
-		container.createDiv({ cls: "digest-block digest-old", text: oldData.Summary });
+export function renderMetadataDiff(
+	container: HTMLElement,
+	properties: PropertyDefinition[],
+	oldData: NoteMetadata,
+	proposed: NoteMetadata
+) {
+	for (const p of properties) {
+		container.createEl("h3", { text: p.name });
+		if (p.type === "string[]") {
+			renderChipDiff(container, oldData[p.name] as string[] | undefined, proposed[p.name] as string[] | undefined);
+		} else {
+			const oldVal = oldData[p.name] as string | undefined;
+			if (oldVal) {
+				container.createDiv({ cls: "digest-block digest-old", text: oldVal });
+			}
+			container.createDiv({ cls: "digest-block digest-new", text: (proposed[p.name] as string) ?? "" });
+		}
 	}
-	container.createDiv({ cls: "digest-block digest-new", text: proposed.Summary });
-	container.createEl("h3", { text: "Keywords" });
-	renderChipDiff(container, oldData.Keywords, proposed.Keywords);
-	container.createEl("h3", { text: "Aliases" });
-	renderChipDiff(container, oldData.Aliases, proposed.Aliases);
 }

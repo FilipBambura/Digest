@@ -1,8 +1,9 @@
 import { App, Modal, Notice } from "obsidian";
-import { NoteMetadata } from "../types";
+import { NoteMetadata, PropertyDefinition } from "../types";
 import { renderMetadataDiff } from "./metadata-diff-view";
 
 interface DiffModalOpts {
+	properties: PropertyDefinition[];
 	old: NoteMetadata;
 	proposed: NoteMetadata;
 	onAccept: () => Promise<void>;
@@ -25,7 +26,7 @@ export class DiffModal extends Modal {
 			text: "Green = added, strikethrough = removed.",
 			cls: "setting-item-description",
 		});
-		renderMetadataDiff(contentEl, this.opts.old, this.opts.proposed);
+		renderMetadataDiff(contentEl, this.opts.properties, this.opts.old, this.opts.proposed);
 		const buttonRow = contentEl.createDiv({ cls: "modal-button-container" });
 		const cancelBtn = buttonRow.createEl("button", { text: "Cancel" });
 		cancelBtn.addEventListener("click", () => this.close());
